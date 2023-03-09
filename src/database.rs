@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 struct Position {
-    x: u64,
-    y: u64,
+    column: u64,
+    row: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -30,14 +30,14 @@ impl Default for Date {
 pub struct GridValue {
     timestamp: Date,
     position: Position,
-    content: String,
+    value: Option<String>,
     user: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct NewGridValue {
     position: Position,
-    content: String,
+    value: Option<String>,
 }
 
 pub async fn create_handle() -> mongodb::Collection<GridValue> {
@@ -52,7 +52,7 @@ pub async fn create_handle() -> mongodb::Collection<GridValue> {
     db.collection::<GridValue>("canvas")
 }
 
-pub async fn get_canvas() -> Result<Vec<GridValue>, mongodb::error::Error> {
+pub async fn get_grid() -> Result<Vec<GridValue>, mongodb::error::Error> {
     let handle = create_handle().await;
     let cursor = handle.find(doc! {}, None).await?;
     let res: Vec<GridValue> = cursor.map(|m| m.unwrap()).collect().await;
@@ -69,7 +69,7 @@ pub async fn create_grid_value(
         timestamp: Date(Utc::now().naive_utc()),
         position: new_box.position,
         user: username,
-        content: new_box.content,
+        value: new_box.value,
     };
     let replaced = handle
         .find_one_and_replace(doc! { "position": position }, &new, None)

@@ -7,8 +7,6 @@ import "react-toastify/dist/ReactToastify.css";
 import "./App.css";
 
 const GRID_SIZE = 90;
-const GRID_CELL_SIZE = 10;
-const GRID_PIXEL = GRID_CELL_SIZE * GRID_SIZE;
 
 const devmode = process.env.NODE_ENV === "development";
 const server_address = devmode
@@ -16,20 +14,34 @@ const server_address = devmode
   : "bplace-api.preview.blackfoot.dev";
 const secure = !devmode;
 
-function setValue(value: string, position: {x: number,y: number}, canvas: HTMLCanvasElement) {
-  // TODO
+function setValue(message: {value: string, position: {row: number,column: number}}, gridCells: {value:string}[][], setGridCells: any) {
+  const newGrid = JSON.parse(JSON.stringify(gridCells));
+  newGrid[message.position.row][message.position.column] = { value: message.value };
+  setGridCells(newGrid);
 }
 
 function App() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [username, setUsername] = useState<string | null | undefined>(
     localStorage.getItem("username")
   );
   const [currentWs, setCurrentWs] = useState<WebSocket>();
   const [username_input, setUsername_input] = useState<string>();
-  const [data, setData] = useState([
-    [{ value: "Vanilla" }, { value: "Chocolate" }],
-    [{ value: "Strawberry" }, { value: "Cookies" }],
+  const [selected, setSelected] = useState<Point>();
+  const [gridCells, setGridCells] = useState<{value:string}[][]>([
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
+    [{value: ""},{value: ""},{value: ""},{value: ""},{value: ""}],
   ]);
 
   useEffect(() => {
@@ -46,15 +58,18 @@ function App() {
     ws.onopen = async () => {
       console.log("ws opened");
       localStorage.setItem("username", username);
-      if (canvasRef.current) {
         let query = await fetch(
           `http${secure ? "s" : ""}://${server_address}/`
         );
-        let canvas_pixels = await query.json();
-        for (const pixel of canvas_pixels) {
-          // todo sync values
+        let grid_values = await query.json();
+        let newGrid = gridCells;
+        for (const cell of grid_values) {
+          console.log(cell);
+          newGrid[cell.position.row][cell.position.column] = {value: cell.value};
         }
-      }
+        console.log(newGrid);
+        
+        setGridCells(newGrid)
     };
     ws.onclose = (ev: CloseEvent) =>
       console.log(
@@ -65,9 +80,9 @@ function App() {
       const message = JSON.parse(e.data);
       if (message.error) {
         toast(message.error);
-      }  else if (canvasRef.current) setValue(message, {x:1,y:1}, canvasRef.current);
+      }  else setValue(message, gridCells, setGridCells);
     };
-  }, [username, canvasRef.current]);
+  }, [username, setGridCells]);
 
 
 
@@ -101,9 +116,13 @@ function App() {
         draggable={false}
         pauseOnHover
       />
-      <Spreadsheet data={data} onSelect={(selected: Point[]) => { console.log(selected) }} onChange={(data: any) => { 
-        console.log(data );
-        setData(data)
+      <Spreadsheet data={gridCells} onSelect={(selected: Point[]) => { setSelected(selected[0]) }} onChange={(data: any) => { 
+        if(selected) {
+          let value = data[selected.row][selected.column]?.value;
+          let update =  JSON.stringify({ position: selected, value });
+          console.log({update});
+          currentWs?.send(update);
+        }
       }} />
     </div>
   );

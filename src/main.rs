@@ -20,7 +20,7 @@ use actix_web_actors::ws;
 use database::{create_grid_value, NewGridValue};
 use env_logger::Env;
 
-use crate::database::get_canvas;
+use crate::database::get_grid;
 
 type User = Addr<MyWs>;
 type Users = Arc<RwLock<HashMap<String, User>>>;
@@ -72,7 +72,7 @@ impl actix::Handler<Message> for MyWs {
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for MyWs {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         if let Ok(ws::Message::Text(text)) = msg {
-            if let Ok(grid_value) = serde_json::from_str::<NewGridValue>(&text) {
+            if let Ok(grid_value) = serde_json::from_str::<NewGridValue>(dbg!(&text)) {
                 let username = self.username.clone();
                 let future = async move {
                     create_grid_value(grid_value, username)
@@ -110,7 +110,7 @@ async fn ws_start(
 }
 
 async fn index() -> Result<impl Responder> {
-    let resp = get_canvas()
+    let resp = get_grid()
         .await
         .map_err(|_| error::ErrorInternalServerError("unable to get canvas"))?;
     Ok(web::Json(resp))
