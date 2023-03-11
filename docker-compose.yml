@@ -1,15 +1,15 @@
 version: '3.1'
 
 services:
-  front:
-    build: front
-    ports:
-      - 8080:80
+  # front:
+  #   build: front
+  #   ports:
+  #     - 8080:80
 
-  api:
-    build: .
-    ports:
-      - 3000:3000
+  # api:
+  #   build: .
+  #   ports:
+  #     - 3000:3000
 
   mongo:
     image: mongo

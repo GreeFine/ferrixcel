@@ -704,6 +704,7 @@ dependencies = [
  "env_logger",
  "futures",
  "lazy_static",
+ "log",
  "mongodb",
  "rand",
  "serde",

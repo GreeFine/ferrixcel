@@ -19,6 +19,7 @@ use actix_web::{
 use actix_web_actors::ws;
 use database::{create_grid_value, NewGridValue};
 use env_logger::Env;
+use log::info;
 
 use crate::database::get_grid;
 
@@ -37,13 +38,13 @@ pub struct MyWs {
 impl Actor for MyWs {
     type Context = ws::WebsocketContext<Self>;
     fn started(&mut self, ctx: &mut Self::Context) {
-        println!("User connection: [{}] -> {}", self.ip, self.username);
+        info!("User connection: [{}] -> {}", self.ip, self.username);
         let mut users = USERS.write().expect("unable to get lock on users");
         users.insert(self.username.clone(), ctx.address());
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
-        println!("User disconnecting: [{}] -> {}", self.ip, self.username);
+        info!("User disconnecting: [{}] -> {}", self.ip, self.username);
         let mut users = USERS.write().expect("unable to get lock on users");
         users.remove(&self.username);
     }
