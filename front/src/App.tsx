@@ -10,7 +10,7 @@ const GRID_SIZE = 20;
 
 const devmode = process.env.NODE_ENV === "development";
 const server_address = devmode
-  ? "localhost:8080"
+  ? "192.168.1.128:8080"
   : "bplace-api.preview.blackfoot.dev";
 const secure = !devmode;
 
@@ -124,7 +124,7 @@ function App() {
         onChange={(data: any) => {
           if (selected) {
             const value = data[selected.row][selected.column]?.value;
-            const update = JSON.stringify({ position: selected, value });
+            const update = JSON.stringify({ NewGridValue: { position: selected, value }});
             console.log({ update });
             currentWs?.send(update);
           }
