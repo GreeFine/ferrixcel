@@ -1,4 +1,5 @@
 #![feature(map_try_insert)]
+#![feature(hash_extract_if)]
 #[warn(unused_extern_crates)]
 #[macro_use]
 extern crate lazy_static;

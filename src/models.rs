@@ -46,5 +46,9 @@ pub struct NewGridValue {
 #[derive(Debug, Clone, AsRefStr, Deserialize, Serialize)]
 pub enum ActionKind {
     NewGridValue(NewGridValue),
-    Select(Option<Position>),
+    /// Used to broadcast deselected positions
+    Select(Vec<Position>),
+    /// Used only by the server to broadcast deselected positions
+    #[serde(skip_serializing)]
+    Deselect(Vec<Position>),
 }

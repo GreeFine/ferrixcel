@@ -38,6 +38,30 @@ impl Actor for MyWs {
         let mut users = USERS.write().expect("unable to get lock on users");
 
         users.insert(self.uuid, (ctx.address(), self.clone()));
+        let selection_by_user = {
+            let selected = SELECTIONS.read().unwrap();
+            let mut selection_by_user: HashMap<String, Vec<Position>> = HashMap::new();
+            selected
+                .clone()
+                .into_iter()
+                .for_each(|(position, username)| {
+                    selection_by_user
+                        .entry(username)
+                        .and_modify(|positions| positions.push(position.clone()))
+                        .or_insert(vec![position]);
+                });
+            selection_by_user
+        };
+        for (username, positions) in selection_by_user {
+            let action = ActionKind::Select(positions);
+            let message = Broadcast {
+                who: &username,
+                kind: action.as_ref(),
+                payload: action.get_action_payload(),
+            };
+            ctx.address()
+                .do_send(SendMessage(serde_json::to_string(&message).unwrap()));
+        }
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
@@ -46,7 +70,11 @@ impl Actor for MyWs {
             let mut selections = SELECTIONS
                 .write()
                 .expect("unable to get lock on selections");
-            selections.retain(|_pos, username| username == &self.username);
+            let deselection: Vec<Position> = selections
+                .extract_if(|_pos, username| username == &self.username)
+                .map(|(position, _username)| position)
+                .collect();
+            self.broadcast(ActionKind::Deselect(deselection));
         }
         {
             let mut users = USERS.write().expect("unable to get lock on users");
@@ -64,6 +92,7 @@ impl ActionKind {
         match self {
             ActionKind::NewGridValue(x) => serde_json::to_value(x).unwrap(),
             ActionKind::Select(x) => serde_json::to_value(x).unwrap(),
+            ActionKind::Deselect(x) => serde_json::to_value(x).unwrap(),
         }
     }
 }
@@ -128,31 +157,40 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for MyWs {
                         future.into_actor(self).spawn(ctx);
                         self.broadcast(action);
                     }
-                    ActionKind::Select(position) => {
+                    ActionKind::Select(positions) => {
+                        let mut selections = SELECTIONS.write().expect("write in selections");
+                        if positions
+                            .iter()
+                            .any(|position| selections.contains_key(position))
                         {
-                            let mut selections =
-                                dbg!(SELECTIONS.write().expect("write in selections"));
-                            if let Some(position) = position {
-                                if selections.contains_key(dbg!(&position)) {
-                                    ctx.address().do_send(SendMessage(
-                                        serde_json::to_string(&ErrorMessages {
-                                            error_code: 400,
-                                            error: "This grid position is already locked.",
-                                        })
-                                        .unwrap(),
-                                    ));
-                                    return;
-                                }
-
-                                selections.retain(|_pos, username| {
-                                    dbg!(username) == dbg!(&self.username)
-                                });
-                                selections.insert(position.clone(), username);
-                            } else {
-                                selections.retain(|_pos, username| username == &self.username);
-                            }
+                            ctx.address().do_send(SendMessage(
+                                serde_json::to_string(&ErrorMessages {
+                                    error_code: 400,
+                                    error: "This grid position is already locked.",
+                                })
+                                .unwrap(),
+                            ));
+                            return;
                         }
+
+                        let deselection: Vec<_> = selections
+                            .extract_if(|_pos, username| username == &self.username)
+                            .map(|(position, _username)| position)
+                            .collect();
+                        positions.into_iter().for_each(|p| {
+                            selections.insert(p, username.clone());
+                        });
+                        self.broadcast(ActionKind::Deselect(deselection));
                         self.broadcast(action);
+                    }
+                    _ => {
+                        ctx.address().do_send(SendMessage(
+                            serde_json::to_string(&ErrorMessages {
+                                error_code: 500,
+                                error: "Unexpected action.",
+                            })
+                            .unwrap(),
+                        ));
                     }
                 }
             } else {
