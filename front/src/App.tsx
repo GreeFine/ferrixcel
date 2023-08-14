@@ -124,6 +124,9 @@ function App() {
         onChange={(data: any) => {
           if (selected) {
             const value = data[selected.row][selected.column]?.value;
+            const select = JSON.stringify({ Select: { ...selected }});
+            currentWs?.send(select);
+
             const update = JSON.stringify({ NewGridValue: { position: selected, value }});
             console.log({ update });
             currentWs?.send(update);

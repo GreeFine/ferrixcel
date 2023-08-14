@@ -19,3 +19,6 @@ lazy_static = "*"
 rand = "*"
 env_logger = "*"
 log = "0.4.17"
+strum = { version = "0.25.0", features = ["derive"] }
+strum_macros = "0.25.2"
+sqlx = { version = "0.7.1", features = ["runtime-tokio", "postgres"] }

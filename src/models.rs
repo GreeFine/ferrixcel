@@ -1,5 +1,6 @@
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
+use strum_macros::AsRefStr;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Date(pub NaiveDateTime);
@@ -29,10 +30,11 @@ pub struct Position {
     row: u64,
 }
 
-#[derive(Debug, Serialize, Default)]
+#[derive(Debug, Serialize)]
 pub struct Broadcast<'a, T: Serialize> {
     pub who: &'a str,
-    pub action: T,
+    pub kind: &'a str,
+    pub payload: T,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -41,8 +43,8 @@ pub struct NewGridValue {
     pub value: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, AsRefStr, Deserialize, Serialize)]
 pub enum ActionKind {
     NewGridValue(NewGridValue),
-    Select(Position),
+    Select(Option<Position>),
 }

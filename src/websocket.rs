@@ -5,8 +5,9 @@ use std::{
 
 use actix::prelude::*;
 
-use actix_web_actors::ws::{self, CloseReason};
-use log::info;
+use actix_web_actors::ws;
+use log::{debug, info};
+use mongodb::bson::Uuid;
 use serde::Serialize;
 
 use crate::{
@@ -14,8 +15,7 @@ use crate::{
     models::{ActionKind, Broadcast, Position},
 };
 
-type User = Addr<MyWs>;
-type Users = Arc<RwLock<HashMap<String, User>>>;
+type Users = Arc<RwLock<HashMap<Uuid, (Addr<MyWs>, MyWs)>>>;
 type Selections = Arc<RwLock<HashMap<Position, String>>>;
 
 lazy_static! {
@@ -23,10 +23,12 @@ lazy_static! {
     pub static ref SELECTIONS: Selections = Arc::new(RwLock::new(HashMap::new()));
 }
 
+#[derive(Clone)]
 pub struct MyWs {
+    pub uuid: Uuid,
     pub username: String,
     pub ip: String,
-    pub logged: bool,
+    pub table: Option<String>,
 }
 
 impl Actor for MyWs {
@@ -34,27 +36,11 @@ impl Actor for MyWs {
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("User connection: [{}] -> {}", self.ip, self.username);
         let mut users = USERS.write().expect("unable to get lock on users");
-        if users.get(&self.username).is_some() {
-            info!(
-                "Disconnecting new connection, username already taken {}",
-                self.username
-            );
-            ctx.close(Some(CloseReason {
-                code: ws::CloseCode::Invalid,
-                description: Some("username already taken".to_string()),
-            }));
-            ctx.stop();
-            return;
-        }
 
-        users.insert(self.username.clone(), ctx.address());
-        self.logged = true;
+        users.insert(self.uuid, (ctx.address(), self.clone()));
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
-        if !self.logged {
-            return;
-        }
         info!("User disconnecting: [{}] -> {}", self.ip, self.username);
         {
             let mut selections = SELECTIONS
@@ -64,7 +50,7 @@ impl Actor for MyWs {
         }
         {
             let mut users = USERS.write().expect("unable to get lock on users");
-            users.remove(&self.username);
+            users.remove(&self.uuid);
         }
     }
 }
@@ -73,18 +59,28 @@ impl Actor for MyWs {
 #[rtype(result = "()")]
 pub struct SendMessage(pub String);
 
+impl ActionKind {
+    fn get_action_payload(&self) -> serde_json::Value {
+        match self {
+            ActionKind::NewGridValue(x) => serde_json::to_value(x).unwrap(),
+            ActionKind::Select(x) => serde_json::to_value(x).unwrap(),
+        }
+    }
+}
+
 impl MyWs {
-    fn broadcast<T: Serialize>(&self, action: T) {
+    fn broadcast(&self, action: ActionKind) {
         let payload = SendMessage(
             serde_json::to_string(&Broadcast {
                 who: &self.username,
-                action,
+                kind: action.as_ref(),
+                payload: action.get_action_payload(),
             })
             .unwrap(),
         );
         let users = USERS.write().expect("unable to get lock on users");
         for (_username, user) in users.iter() {
-            user.do_send(payload.clone());
+            user.0.do_send(payload.clone());
         }
     }
 }
@@ -107,7 +103,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for MyWs {
         if let Ok(ws::Message::Text(text)) = msg {
             if let Ok(action) = serde_json::from_str::<ActionKind>(&text) {
                 let username = self.username.clone();
-                match action {
+                info!("{username} -> {action:#?}");
+                match action.clone() {
                     ActionKind::NewGridValue(grid_value) => {
                         {
                             let selections = SELECTIONS.read().expect("read in selections");
@@ -129,19 +126,44 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for MyWs {
                                 .expect("Unable to create value in database");
                         };
                         future.into_actor(self).spawn(ctx);
-                        self.broadcast(grid_value);
+                        self.broadcast(action);
                     }
                     ActionKind::Select(position) => {
                         {
-                            let mut selections = SELECTIONS.write().expect("write in selections");
-                            selections.insert(position.clone(), username);
-                        }
+                            let mut selections =
+                                dbg!(SELECTIONS.write().expect("write in selections"));
+                            if let Some(position) = position {
+                                if selections.contains_key(dbg!(&position)) {
+                                    ctx.address().do_send(SendMessage(
+                                        serde_json::to_string(&ErrorMessages {
+                                            error_code: 400,
+                                            error: "This grid position is already locked.",
+                                        })
+                                        .unwrap(),
+                                    ));
+                                    return;
+                                }
 
-                        self.broadcast(position);
+                                selections.retain(|_pos, username| {
+                                    dbg!(username) == dbg!(&self.username)
+                                });
+                                selections.insert(position.clone(), username);
+                            } else {
+                                selections.retain(|_pos, username| username == &self.username);
+                            }
+                        }
+                        self.broadcast(action);
                     }
                 }
             } else {
-                ctx.text(r#"{"error":"unable to parse value"}"#);
+                debug!("Unable to parse action from user {}: {text}", self.username);
+                ctx.text(
+                    serde_json::to_string(&ErrorMessages {
+                        error_code: 400,
+                        error: "Unable to parse value.",
+                    })
+                    .unwrap(),
+                );
             };
         } else {
             info!("Received unhandled query from stream: {msg:#?}")
