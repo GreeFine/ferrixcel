@@ -7,6 +7,7 @@ mod database;
 mod grid;
 mod introspection;
 mod models;
+mod query;
 mod websocket;
 
 use actix_cors::Cors;
@@ -21,7 +22,7 @@ use mongodb::bson::Uuid;
 
 use crate::{database::get_grid, introspection::list_tables, websocket::MyWs};
 
-#[get("/ws/{username}")]
+#[get("/ws/whiteboard/{username}")]
 async fn ws_start(
     req: HttpRequest,
     path: web::Path<(String,)>,
@@ -44,7 +45,7 @@ async fn ws_start(
     )
 }
 
-#[get("/")]
+#[get("/whiteboard")]
 async fn index() -> Result<impl Responder> {
     let resp = get_grid()
         .await
@@ -60,10 +61,19 @@ async fn get_tables() -> Result<impl Responder> {
     Ok(web::Json(tables))
 }
 
-#[get("/table/{table_name}/columns")]
+#[get("/tables/{table_name}/columns")]
 async fn get_columns(path: web::Path<(String,)>) -> Result<impl Responder> {
     let table_name = path.into_inner().0;
     let columns = list_columns(&table_name)
+        .await
+        .map_err(|_| error::ErrorInternalServerError("sqlx error unable to list columns"))?;
+    Ok(web::Json(columns))
+}
+
+#[get("/tables/{table_name}/rows")]
+async fn query_table(path: web::Path<(String,)>) -> Result<impl Responder> {
+    let table_name = path.into_inner().0;
+    let columns = query::query_table(&table_name)
         .await
         .map_err(|_| error::ErrorInternalServerError("sqlx error unable to list columns"))?;
     Ok(web::Json(columns))
@@ -106,6 +116,7 @@ async fn main() -> std::io::Result<()> {
             .service(index)
             .service(get_tables)
             .service(get_columns)
+            .service(query_table)
     })
     .bind(("0.0.0.0", 8080))?
     .run()

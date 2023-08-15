@@ -34,10 +34,10 @@ pub async fn list_tables() -> Result<Vec<String>, sqlx::Error> {
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct ColumnInfo {
     ordinal_position: i32,
-    column_name: String,
-    data_type: String,
+    pub column_name: String,
+    pub data_type: String,
     column_default: Option<String>,
-    is_primary_key: bool,
+    pub is_primary_key: bool,
 }
 
 pub async fn list_columns(table_name: &str) -> Result<Vec<ColumnInfo>, sqlx::Error> {
